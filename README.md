@@ -1,6 +1,6 @@
 cvmblaster
 ===
-![PYPI](https://img.shields.io/pypi/v/restidy)
+![PYPI](https://img.shields.io/pypi/v/cvmblaster)
 
 ## Introduction
-test
+The core code of python class about finding genes in assembled genome
