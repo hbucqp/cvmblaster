@@ -142,8 +142,8 @@ class Blaster():
                         # df_tmp = pd.DataFrame(best_result)
         # print(df_final.T)
         # df_result = df_final.T.reset_index(drop=True)
-        os.remove(self.temp_output)
         result_handler.close()
+        os.remove(self.temp_output)
         df = Blaster.resultdict2df(hsp_results)
         return df
 
