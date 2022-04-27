@@ -130,20 +130,10 @@ class Blaster():
 
                     if save == 1:
                         hsp_results[hit_id] = best_result
-
-                    # if best_result:
-                    #     save = Blaster.filter_results(perc_coverage)
-
-                    # if save == 1:
-                    #     # print(best_result)
-                    #     df_tmp = pd.DataFrame.from_dict(
-                    #         best_result, orient='index')
-                    #     df_final = pd.concat([df_final, df_tmp], axis=1)
-                        # df_tmp = pd.DataFrame(best_result)
-        # print(df_final.T)
-        # df_result = df_final.T.reset_index(drop=True)
+        # close file handler, then remove temp file
         result_handler.close()
         os.remove(self.temp_output)
+        # print(self.inputfile)
         df = Blaster.resultdict2df(hsp_results)
         return df
 
@@ -201,12 +191,29 @@ class Blaster():
     @staticmethod
     def resultdict2df(result_dict):
         df_final = pd.DataFrame()
-        for key in result_dict.keys():
-            hit_data = result_dict[key]
-            df_tmp = pd.DataFrame.from_dict(hit_data, orient='index')
-            df_final = pd.concat([df_final, df_tmp], axis=1)
+        col_dict = {'FILE': '',
+                    'SEQUENCE': '',
+                    'GENE': '',
+                    'START': '',
+                    'END': '',
+                    'SBJSTART': '',
+                    'SBJEND': '',
+                    'STRAND': '',
+                    'GAPS': '',
+                    "%COVERAGE": '',
+                    "%IDENTITY": '',
+                    'ACCESSION': '',
+                    'cal_score': '',
+                    'remove': ''}
+        if len(result_dict.keys()) == 0:
+            df_final = pd.DataFrame.from_dict(col_dict, orient='index')
+        else:
+            for key in result_dict.keys():
+                hit_data = result_dict[key]
+                df_tmp = pd.DataFrame.from_dict(hit_data, orient='index')
+                df_final = pd.concat([df_final, df_tmp], axis=1)
         df_result = df_final.T
-        df_result.drop(labels=['cal_score', 'remove'], axis=1, inplace=True)
+        df_result = df_result.drop(labels=['cal_score', 'remove'], axis=1)
         return df_result
 
     @staticmethod
