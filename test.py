@@ -1,167 +1,145 @@
 import os
-# from cvmblaster.blaster import Blaster
-from Bio.Blast.Applications import NcbimakeblastdbCommandline
-from Bio.Blast.Applications import NcbiblastnCommandline
+import sys
+import argparse
+import subprocess
+from Bio import SeqIO
+from cvmblaster.blaster import Blaster
 
 
-db = '/Users/cuiqingpo/Downloads/blast_db/resfinder'
-
-input = "/Users/cuiqingpo/Downloads/resblaster/17BJBY25.fa"
-output = "temp.xml"
-
-
-class Blaster():
-    def __init__(self, inputfile, database, output, threads, minid=90, mincov=60):
-        self.inputfile = os.path.abspath(inputfile)
-        self.database = database
-        self.minid = int(minid)
-        self.mincov = int(mincov)
-        self.temp_output = os.path.join(os.path.abspath(output), 'temp.xml')
-        self.threads = threads
-
-    def biopython_blast(self):
-        hsp_results = {}
-        cline = NcbiblastnCommandline(query=self.inputfile, db=self.database, dust='no',
-                                      evalue=1E-20, out=self.temp_output, outfmt=5,
-                                      perc_identity=self.minid, max_target_seqs=50000,
-                                      num_threads=self.threads)
-        # print(cline)
-        # print(self.temp_output)
-
-        stdout, stderr = cline()
-
-        result_handler = open(self.temp_output)
-
-        blast_records = NCBIXML.parse(result_handler)
-        df_final = pd.DataFrame()
-
-        for blast_record in blast_records:
-
-            # if blast_record.alignments:
-            #     print("QUERY: %s" % blast_record.query)
-            # else:
-            #     for alignment in blast_record.alignments:
-            for alignment in blast_record.alignments:
-                for hsp in alignment.hsps:
-                    strand = 0
-                    query_name = blast_record.query
-                    # print(query_name)
-                    target_gene = alignment.title.split(' ')[1]
-
-                    # Get gene name and accession number from target_gene
-                    gene = target_gene.split('_')[0]
-                    accession = target_gene.split('_')[2]
-
-                    # print(target_gene)
-                    sbjct_length = alignment.length  # The length of matched gene
-                    # print(sbjct_length)
-                    sbjct_start = hsp.sbjct_start
-                    sbjct_end = hsp.sbjct_end
-                    gaps = hsp.gaps  # gaps of alignment
-                    query_string = str(hsp.query)  # Get the query string
-                    identities_length = hsp.identities  # Number of indentity bases
-                    # contig_name = query.replace(">", "")
-                    query_start = hsp.query_start
-                    query_end = hsp.query_end
-                    # length of query sequence
-                    query_length = len(query_string)
-
-                    # calculate identities
-                    perc_ident = (int(identities_length)
-                                  / float(query_length) * 100)
-                    IDENTITY = "%.2f" % perc_ident
-                    # print("Identities: %s " % perc_ident)
-
-                    # coverage = ((int(query_length) - int(gaps))
-                    #             / float(sbjct_length))
-                    # print(coverage)
-
-                    perc_coverage = (((int(query_length) - int(gaps))
-                                      / float(sbjct_length)) * 100)
-                    COVERAGE = "%.2f" % perc_coverage
-                    # print("Coverage: %s " % perc_coverage)
-
-                    # cal_score is later used to select the best hit
-                    cal_score = perc_ident * perc_coverage
-
-                    # Calculate if the hit is on minus strand
-                    if sbjct_start > sbjct_end:
-                        temp = sbjct_start
-                        sbjct_start = sbjct_end
-                        sbjct_end = temp
-                        strand = 1
-
-                    if strand == 0:
-                        strand_direction = '+'
-                    else:
-                        strand_direction = '-'
-
-                    if perc_coverage >= self.mincov:
-                        hit_id = "%s:%s_%s:%s" % (
-                            query_name, query_start, query_end, target_gene)
-                        # hit_id = query_name
-                        # print(hit_id)
-                        best_result = {
-                            'FILE': os.path.basename(self.inputfile),
-                            'SEQUENCE': query_name,
-                            'GENE': gene,
-                            'START': query_start,
-                            'END': query_end,
-                            'SBJSTART': sbjct_start,
-                            'SBJEND': sbjct_end,
-                            'STRAND': strand_direction,
-                            # 'COVERAGE':
-                            'GAPS': gaps,
-                            "%COVERAGE": COVERAGE,
-                            "%IDENTITY": IDENTITY,
-                            # 'DATABASE':
-                            'ACCESSION': accession,
-                            'cal_score': cal_score,
-                            'remove': 0
-                            # 'PRODUCT': target_gene,
-                            # 'RESISTANCE': target_gene
-                        }
-                    print(best_result)
+def args_parse():
+    "Parse the input argument, use '-h' for help."
+    parser = argparse.ArgumentParser(
+        usage='ResBlaster -i <genome assemble directory> -db <reference database> -o <output_directory> \n\nAuthor: Qingpo Cui(SZQ Lab, China Agricultural University)\n')
+    parser.add_argument("-i", help="<input_path>: genome assembly path")
+    parser.add_argument("-o", help="<output_directory>: output path")
+    parser.add_argument('-db', default='resfinder',
+                        help='<database>: resfinder or others')
+    parser.add_argument('-minid', default=90,
+                        help="<minimum threshold of identity>, default=90")
+    parser.add_argument('-mincov', default=60,
+                        help="<minimum threshold of coverage>, default=60")
+    parser.add_argument('-list', action='store_true', help='<show database>')
+    parser.add_argument('-init', action='store_true',
+                        help='<initialize the reference database>')
+    parser.add_argument(
+        '-t', default=8, help='<number of threads>: default=8')
+    parser.add_argument("-store_arg_seq", default=False, action="store_true")
+    # parser.add_argument("-p", default=True, help="True of False to process something",
+    #                     type=lambda x: bool(strtobool(str(x).lower())))
+    parser.add_argument('-v', '--version', action='version',
+                        version='Version: ' + get_version("__init__.py"), help='Display version')
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+    return parser.parse_args()
 
 
-Blaster(input, db, output, 8).biopython_blast()
-
-# help(Blaster)
-# output = "~/Downloads/test_genome/test"
-# if not os.path.exists(output):
-#     os.mkdir(output)
-# # outpath = os.path.abspath(output)
-# print(output)
+def read(rel_path: str) -> str:
+    here = os.path.abspath(os.path.dirname(__file__))
+    # intentionally *not* adding an encoding option to open, See:
+    #   https://github.com/pypa/virtualenv/issues/201#issuecomment-3145690
+    with open(os.path.join(here, rel_path)) as fp:
+        return fp.read()
 
 
-# # print(os.path.abspath('~/Downloads/test_genome/test'))
+def get_version(rel_path: str) -> str:
+    for line in read(rel_path).splitlines():
+        if line.startswith("__version__"):
+            delim = '"' if '"' in line else "'"
+            return line.split(delim)[1]
+    raise RuntimeError("Unable to find version string.")
 
 
-# test = Blaster(input, db, output, 8, ).biopython_blast()
-
-# print(test)
-
-
-# db_file = '/Users/cuiqingpo/Downloads/blast_db/all.fsa'
-# name = '/Users/cuiqingpo/Downloads/blast_db/resfinder'
-
-
-# def initialize_db():
-#     database_path = os.path.join(
-#         os.path.dirname(__file__), f'db')
-#     for file in os.listdir(database_path):
-#         if file.endswith('.fsa'):
-#             file_path = os.path.join(database_path, file)
-#             file_base = os.path.splitext(file)[0]
-#             out_path = os.path.join(database_path, file_base)
-#             Blaster.makeblastdb()
+def is_fasta(file):
+    """
+    chcek if the input file is fasta format
+    """
+    try:
+        with open(file, "r") as handle:
+            fasta = SeqIO.parse(handle, "fasta")
+            # False when `fasta` is empty, i.e. wasn't a FASTA file
+            return any(fasta)
+    except:
+        return False
 
 
-# def makeblastdb(file, name):
-#     cline = NcbimakeblastdbCommandline(
-#         dbtype="nucl", out=name, input_file=file)
-#     stdout, stderr = cline()
+def join(f):
+    """
+    Get the path of database file which was located in the scripts dir
+    """
+    return os.path.join(os.path.dirname(__file__), f)
 
 
-# print('Start')
-# makeblastdb(db_file, name)
+def show_db_list():
+    print('Datbase' + '\t' + 'Num_of_Sequence')
+    db_path = os.path.join(os.path.dirname(__file__), 'db')
+    for file in os.listdir(db_path):
+        file_path = os.path.join(db_path, file)
+        if file_path.endswith('.fsa'):
+            fasta_file = os.path.basename(file_path)
+            file_base = os.path.splitext(fasta_file)[0]
+            num_seqs = len(
+                [1 for line in open(file_path) if line.startswith(">")])
+            print(file_base + '\t' + str(num_seqs))
+
+
+def initialize_db():
+    database_path = os.path.join(
+        os.path.dirname(__file__), f'db')
+    for file in os.listdir(database_path):
+        if file.endswith('.fsa'):
+            file_path = os.path.join(database_path, file)
+            file_base = os.path.splitext(file)[0]
+            out_path = os.path.join(database_path, file_base)
+            Blaster.makeblastdb(file_path, out_path)
+
+
+def main():
+    args = args_parse()
+    if args.list:
+        show_db_list()
+    elif args.init:
+        initialize_db()
+    else:
+        # threads
+        threads = args.t
+        # print(threads)
+
+        minid = args.minid
+        mincov = args.mincov
+
+        # get the input path
+        input_path = os.path.abspath(args.i)
+
+        # check if the output directory exists
+        if not os.path.exists(args.o):
+            os.mkdir(args.o)
+
+        output_path = os.path.abspath(args.o)
+
+        # get the database path
+        # database = args.db
+        # database_path = os.path.join(
+        #     os.path.dirname(__file__), f'db/{args.db}')
+        database_path = "/Users/cuiqingpo/Downloads/ResBlaster/ResBlaster/db/resfinder"
+
+        for file in os.listdir(input_path):
+            file_base = str(os.path.splitext(file)[0])
+            output_filename = file_base + '_tab.txt'
+            outfile = os.path.join(output_path, output_filename)
+            # print(file_base)
+            file_path = os.path.join(input_path, file)
+            if os.path.isfile(file_path):
+                # print("TRUE")
+                if is_fasta(file_path):
+                    df = Blaster(file_path, database_path,
+                                 output_path, threads, minid, mincov).biopython_blast()
+                    print(type(df))
+                    print("Finishing process: writing results to " + str(outfile))
+                    # df.to_csv(outfile, sep='\t', index=False)
+                # if args.store_arg_seq:
+                #     Blaster.get_query_seq(result_dict, output_path)
+
+
+if __name__ == '__main__':
+    main()

@@ -2,6 +2,8 @@ import os
 import sys
 import pandas as pd
 from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 from Bio.Blast import NCBIXML
 
 # from Bio.Blast import NCBIWWW
@@ -34,6 +36,10 @@ class Blaster():
         blast_records = NCBIXML.parse(result_handler)
         df_final = pd.DataFrame()
 
+        # solve local variable referenced before assignment
+        loop_check = 0
+        save = 0
+
         for blast_record in blast_records:
 
             # if blast_record.alignments:
@@ -43,13 +49,14 @@ class Blaster():
             for alignment in blast_record.alignments:
                 for hsp in alignment.hsps:
                     strand = 0
+
                     query_name = blast_record.query
                     # print(query_name)
                     target_gene = alignment.title.split(' ')[1]
 
                     # Get gene name and accession number from target_gene
-                    gene = target_gene.split('_')[0]
-                    accession = target_gene.split('_')[2]
+                    gene = target_gene.split('___')[0]
+                    accession = target_gene.split('___')[2]
 
                     # print(target_gene)
                     sbjct_length = alignment.length  # The length of matched gene
@@ -89,6 +96,8 @@ class Blaster():
                         sbjct_start = sbjct_end
                         sbjct_end = temp
                         strand = 1
+                        query_string = str(
+                            Seq(str(query_string)).reverse_complement())
 
                     if strand == 0:
                         strand_direction = '+'
@@ -96,6 +105,7 @@ class Blaster():
                         strand_direction = '-'
 
                     if perc_coverage >= self.mincov:
+                        loop_check += 1
                         hit_id = "%s:%s_%s:%s" % (
                             query_name, query_start, query_end, target_gene)
                         # hit_id = query_name
@@ -115,18 +125,21 @@ class Blaster():
                             "%IDENTITY": IDENTITY,
                             # 'DATABASE':
                             'ACCESSION': accession,
+                            'QUERY_SEQ': query_string,
                             'cal_score': cal_score,
                             'remove': 0
                             # 'PRODUCT': target_gene,
                             # 'RESISTANCE': target_gene
                         }
-                    if best_result:
-                        save = 1
 
-                        if hsp_results:
-                            tmp_results = hsp_results
-                            save, hsp_results = Blaster.filter_results(
-                                save, best_result, tmp_results)
+                        # solve local variable referenced before assignment
+                        if best_result:
+                            save = 1
+
+                            if hsp_results:
+                                tmp_results = hsp_results
+                                save, hsp_results = Blaster.filter_results(
+                                    save, best_result, tmp_results)
 
                     if save == 1:
                         hsp_results[hit_id] = best_result
@@ -134,8 +147,13 @@ class Blaster():
         result_handler.close()
         os.remove(self.temp_output)
         # print(self.inputfile)
-        df = Blaster.resultdict2df(hsp_results)
-        return df
+        if loop_check == 0:
+            df = pd.DataFrame(columns=['FILE', 'SEQUENCE', 'GENE', 'START', 'END', 'SBJSTART',
+                                       'SBJEND', 'STRAND', 'GAPS', '%COVERAGE', '%IDENTITY', 'ACCESSION'])
+        else:
+            df = Blaster.resultdict2df(hsp_results)
+        # print(hsp_results)
+        return df, hsp_results
 
     @staticmethod
     def filter_results(save, best_result, tmp_results):
@@ -203,6 +221,7 @@ class Blaster():
                     "%COVERAGE": '',
                     "%IDENTITY": '',
                     'ACCESSION': '',
+                    'QUERY_SEQ': '',
                     'cal_score': '',
                     'remove': ''}
         if len(result_dict.keys()) == 0:
@@ -213,7 +232,8 @@ class Blaster():
                 df_tmp = pd.DataFrame.from_dict(hit_data, orient='index')
                 df_final = pd.concat([df_final, df_tmp], axis=1)
         df_result = df_final.T
-        df_result = df_result.drop(labels=['cal_score', 'remove'], axis=1)
+        df_result = df_result.drop(
+            labels=['QUERY_SEQ', 'cal_score', 'remove'], axis=1)
         return df_result
 
     @staticmethod
@@ -223,3 +243,45 @@ class Blaster():
         print("Making reference database...")
         stdout, stderr = cline()
         print('Finish')
+
+    @staticmethod
+    def get_arg_seq(file_base, result_dict, out_path):
+        nucl_records = []
+        prot_records = []
+        prot_file = file_base + 'ARGs_prot.fasta'
+        nucl_file = file_base + 'ARGs_nucl.fasta'
+        prot_path = os.path.join(out_path, prot_file)
+        nucl_path = os.path.join(out_path, nucl_file)
+        if len(result_dict.keys()) == 0:
+            print(f'No ARGs were found in {file_base}...')
+        else:
+            for key in result_dict.keys():
+                hit_data = result_dict[key]
+                # file = os.path.splitext(str(hit_data['FILE']))[0]
+                # outfile = os.path.join(
+                # out_path, file + str('_ARGs_nucl.fasta'))
+                nucl_sequence = Seq(str(hit_data['QUERY_SEQ']))
+                trim = len(nucl_sequence) % 3
+                if trim != 0:
+                    nucl_sequence = nucl_sequence + Seq('N' * (3 - trim))
+                prot_sequence = nucl_sequence.replace('-', 'N').translate(
+                    table=11, to_stop=True, gap='-')
+
+                id = str(hit_data['SEQUENCE'] +
+                         '_' + hit_data['GENE']) + str('_' + hit_data['ACCESSION'])
+                name = str(hit_data['ACCESSION'])
+
+                nucl_record = SeqRecord(nucl_sequence,
+                                        id=id,
+                                        name=name,
+                                        description='')
+                nucl_records.append(nucl_record)
+
+                prot_record = SeqRecord(prot_sequence,
+                                        id=id,
+                                        name=name,
+                                        description='')
+                prot_records.append(prot_record)
+
+            SeqIO.write(nucl_records, nucl_path, 'fasta')
+            SeqIO.write(prot_records, prot_path, 'fasta')

@@ -55,8 +55,8 @@ class Blaster():
                     target_gene = alignment.title.split(' ')[1]
 
                     # Get gene name and accession number from target_gene
-                    gene = target_gene.split('_')[0]
-                    accession = target_gene.split('_')[2]
+                    gene = target_gene.split('___')[0]
+                    accession = target_gene.split('___')[2]
 
                     # print(target_gene)
                     sbjct_length = alignment.length  # The length of matched gene
