@@ -278,7 +278,7 @@ class Blaster():
     def makeblastdb(file, name):
         cline = NcbimakeblastdbCommandline(
             dbtype="nucl", out=name, input_file=file)
-        print("Making reference database...")
+        print(f"Making {name} database...")
         stdout, stderr = cline()
         print('Finish')
 
