@@ -133,7 +133,7 @@ class Blaster():
                             # 'PRODUCT': target_gene,
                             # 'RESISTANCE': target_gene
                         }
-                        print(best_result)
+                        # print(best_result)
 
                         # solve local variable referenced before assignment
                         if best_result:
@@ -173,7 +173,7 @@ class Blaster():
         coverage = best_result['%COVERAGE']
         new_cal_score = best_result['cal_score']
         new_gene = best_result["GENE"]
-        print(new_gene)
+        # print(new_gene)
         keys = list(tmp_results.keys())
 
         for hit in keys:
@@ -187,7 +187,7 @@ class Blaster():
                 old_sbjct_end = hit_data['SBJEND']
                 old_cal_score = hit_data['cal_score']
                 old_gene = hit_data['GENE']
-                print(old_gene)
+                # print(old_gene)
                 hit_union_length = (max(old_query_end, new_query_end)
                                     - min(old_query_start, new_query_start))
                 hit_lengths_sum = ((old_query_end - old_query_start)
