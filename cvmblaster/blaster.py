@@ -58,7 +58,7 @@ class Blaster():
                     # Get gene name and accession number from target_gene
                     gene = target_gene.split('___')[0]
                     accession = target_gene.split('___')[2]
-
+                    classes = target_gene.split('___')[3]  # 增加种类
                     # print(target_gene)
                     sbjct_length = alignment.length  # The length of matched gene
                     # print(sbjct_length)
@@ -127,6 +127,7 @@ class Blaster():
                             "%IDENTITY": IDENTITY,
                             # 'DATABASE':
                             'ACCESSION': accession,
+                            'CLASSES': classes,
                             'QUERY_SEQ': query_string,
                             'cal_score': cal_score,
                             'remove': 0
@@ -152,7 +153,7 @@ class Blaster():
         # print(self.inputfile)
         if loop_check == 0:
             df = pd.DataFrame(columns=['FILE', 'SEQUENCE', 'GENE', 'START', 'END', 'SBJSTART',
-                                       'SBJEND', 'STRAND', 'GAPS', '%COVERAGE', '%IDENTITY', 'ACCESSION'])
+                                       'SBJEND', 'STRAND', 'GAPS', '%COVERAGE', '%IDENTITY', 'ACCESSION', 'CLASSES'])
         else:
             df = Blaster.resultdict2df(hsp_results)
         # print(hsp_results)
@@ -197,7 +198,7 @@ class Blaster():
                 if overlap_len <= 0:  # two genes without overlap, save all of them
                     continue
                 # solve bug
-                # else:  # tow genes with overlap   
+                # else:  # tow genes with overlap
                 #     if (old_query_start == new_query_start) and (old_query_end == new_query_end):
                 #         if new_gene == old_gene:
                 #             if new_cal_score > old_cal_score:
@@ -220,7 +221,7 @@ class Blaster():
                 #             save = 1
                 #     else:
                 #         pass
-                else:  # two genes with overlap   
+                else:  # two genes with overlap
                     if (old_query_start == new_query_start) and (old_query_end == new_query_end):
                         if new_cal_score > old_cal_score:
                             remove_old = 1
@@ -259,6 +260,7 @@ class Blaster():
                     "%COVERAGE": '',
                     "%IDENTITY": '',
                     'ACCESSION': '',
+                    'CLASSES': '',
                     'QUERY_SEQ': '',
                     'cal_score': '',
                     'remove': ''}
