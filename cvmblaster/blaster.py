@@ -66,6 +66,7 @@ class Blaster():
                     sbjct_end = hsp.sbjct_end
                     gaps = hsp.gaps  # gaps of alignment
                     query_string = str(hsp.query)  # Get the query string
+                    sbjct_string = str(hsp.sbjct)
                     identities_length = hsp.identities  # Number of indentity bases
                     # contig_name = query.replace(">", "")
                     query_start = hsp.query_start
@@ -99,6 +100,8 @@ class Blaster():
                         strand = 1
                         query_string = str(
                             Seq(str(query_string)).reverse_complement())
+                        sbjct_string = str(
+                            Seq(str(sbjct_string)).reverse_complement())
 
                     if strand == 0:
                         strand_direction = '+'
@@ -129,6 +132,7 @@ class Blaster():
                             'ACCESSION': accession,
                             'CLASSES': classes,
                             'QUERY_SEQ': query_string,
+                            'SBJCT_SEQ': sbjct_string,
                             'cal_score': cal_score,
                             'remove': 0
                             # 'PRODUCT': target_gene,
@@ -159,7 +163,7 @@ class Blaster():
         # print(hsp_results)
         return df, hsp_results
 
-    @staticmethod
+    @ staticmethod
     def filter_results(save, best_result, tmp_results):
         """
         remove the best hsp with coverage lt mincov
@@ -262,6 +266,7 @@ class Blaster():
                     'ACCESSION': '',
                     'CLASSES': '',
                     'QUERY_SEQ': '',
+                    'SBJCT_SEQ': '',
                     'cal_score': '',
                     'remove': ''}
         if len(result_dict.keys()) == 0:
@@ -273,7 +278,7 @@ class Blaster():
                 df_final = pd.concat([df_final, df_tmp], axis=1)
         df_result = df_final.T
         df_result = df_result.drop(
-            labels=['QUERY_SEQ', 'cal_score', 'remove'], axis=1)
+            labels=['QUERY_SEQ', 'SBJCT_SEQ', 'cal_score', 'remove'], axis=1)
         return df_result
 
     @staticmethod
@@ -286,6 +291,9 @@ class Blaster():
 
     @staticmethod
     def get_arg_seq(file_base, result_dict, out_path):
+        """
+        save gene sequence
+        """
         nucl_records = []
         prot_records = []
         prot_file = file_base + 'ARGs_prot.fasta'
@@ -325,3 +333,16 @@ class Blaster():
 
             SeqIO.write(nucl_records, nucl_path, 'fasta')
             SeqIO.write(prot_records, prot_path, 'fasta')
+
+    @staticmethod
+    def is_fasta(file):
+        """
+        chcek if the input file is fasta format
+        """
+        try:
+            with open(file, "r") as handle:
+                fasta = SeqIO.parse(handle, "fasta")
+                # False when `fasta` is empty, i.e. wasn't a FASTA file
+                return any(fasta)
+        except:
+            return False
