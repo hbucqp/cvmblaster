@@ -53,12 +53,13 @@ class Blaster():
                     query_name = blast_record.query
                     # print(query_name)
                     # print(alignment.title)
-                    target_gene = alignment.title.split(' ')[1]
+                    target_gene = alignment.title.partition(' ')[2]
 
                     # Get gene name and accession number from target_gene
                     gene = target_gene.split('___')[0]
                     accession = target_gene.split('___')[2]
                     classes = target_gene.split('___')[3]  # 增加种类
+                    # print(classes)
                     # print(target_gene)
                     sbjct_length = alignment.length  # The length of matched gene
                     # print(sbjct_length)
