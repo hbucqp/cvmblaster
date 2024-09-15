@@ -1,9 +1,9 @@
 Metadata-Version: 2.1
 Name: cvmblaster
-Version: 0.3.4
+Version: 0.3.9
 Summary: find antimcirobial resistance genes
 Home-page: https://github.com/hbucqp/cvmblaster
-Author: Jake Cui
+Author: Qingpo Cui
 Author-email: cqp@cau.edu.cn
 License: MIT Licence
 Keywords: pip,wgs,blastn,resfinder
@@ -17,6 +17,13 @@ Classifier: Programming Language :: Python :: 3.6
 Classifier: Programming Language :: Python :: 3.7
 Classifier: Programming Language :: Python :: 3.8
 Classifier: Programming Language :: Python :: 3.9
+Description-Content-Type: text/markdown
 
-The biopython blast class
+cvmblaster
+===
+![PYPI](https://img.shields.io/pypi/v/cvmblaster)
+
+## Introduction
+The core code of python class about finding genes in assembled genome
+
 

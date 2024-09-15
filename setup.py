@@ -21,33 +21,28 @@ requirements = [
     'Bio', 'pandas', 'setuptools'
 ]
 
-
-def read(rel_path: str) -> str:
-    here = os.path.abspath(os.path.dirname(__file__))
-    # intentionally *not* adding an encoding option to open, See:
-    #   https://github.com/pypa/virtualenv/issues/201#issuecomment-3145690
-    with open(os.path.join(here, rel_path)) as fp:
-        return fp.read()
+about = {}
+here = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(here, 'cvmblaster', '__init__.py'), 'r', encoding='utf-8') as f:
+    exec(f.read(), about)
 
 
-def get_version(rel_path: str) -> str:
-    for line in read(rel_path).splitlines():
-        if line.startswith("__version__"):
-            delim = '"' if '"' in line else "'"
-            return line.split(delim)[1]
-    raise RuntimeError("Unable to find version string.")
+# Get the long description from the relevant file
+with open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
 
 
 setup(
     name="cvmblaster",
-    version=get_version("cvmblaster/__init__.py"),
+    version=about['__version__'],
     keywords=["pip", "wgs", "blastn", "resfinder"],
     description="find antimcirobial resistance genes",
-    long_description="The biopython blast class",
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     license="MIT Licence",
-    url="https://github.com/hbucqp/cvmblaster",
-    author="Jake Cui",
-    author_email="cqp@cau.edu.cn",
+    url=about['__url__'],
+    author=about['__author__'],
+    author_email=about['__author_email__'],
     packages=find_packages(),
     # include_package_data=True,
     package_data={'': ['*']},

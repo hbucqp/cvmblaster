@@ -2,7 +2,6 @@
 README.md
 requirements.txt
 setup.py
-test.py
 cvmblaster/.DS_Store
 cvmblaster/__init__.py
 cvmblaster/blaster.py

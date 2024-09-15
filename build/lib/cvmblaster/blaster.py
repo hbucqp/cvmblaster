@@ -52,12 +52,13 @@ class Blaster():
 
                     query_name = blast_record.query
                     # print(query_name)
+                    # print(alignment.title)
                     target_gene = alignment.title.split(' ')[1]
 
                     # Get gene name and accession number from target_gene
                     gene = target_gene.split('___')[0]
                     accession = target_gene.split('___')[2]
-
+                    classes = target_gene.split('___')[3]  # 增加种类
                     # print(target_gene)
                     sbjct_length = alignment.length  # The length of matched gene
                     # print(sbjct_length)
@@ -108,6 +109,7 @@ class Blaster():
                         loop_check += 1
                         hit_id = "%s:%s_%s:%s" % (
                             query_name, query_start, query_end, target_gene)
+                        # print(hit_id)
                         # hit_id = query_name
                         # print(hit_id)
                         best_result = {
@@ -125,12 +127,14 @@ class Blaster():
                             "%IDENTITY": IDENTITY,
                             # 'DATABASE':
                             'ACCESSION': accession,
+                            'CLASSES': classes,
                             'QUERY_SEQ': query_string,
                             'cal_score': cal_score,
                             'remove': 0
                             # 'PRODUCT': target_gene,
                             # 'RESISTANCE': target_gene
                         }
+                        # print(best_result)
 
                         # solve local variable referenced before assignment
                         if best_result:
@@ -149,7 +153,7 @@ class Blaster():
         # print(self.inputfile)
         if loop_check == 0:
             df = pd.DataFrame(columns=['FILE', 'SEQUENCE', 'GENE', 'START', 'END', 'SBJSTART',
-                                       'SBJEND', 'STRAND', 'GAPS', '%COVERAGE', '%IDENTITY', 'ACCESSION'])
+                                       'SBJEND', 'STRAND', 'GAPS', '%COVERAGE', '%IDENTITY', 'ACCESSION', 'CLASSES'])
         else:
             df = Blaster.resultdict2df(hsp_results)
         # print(hsp_results)
@@ -169,6 +173,8 @@ class Blaster():
         new_sbjct_end = best_result['SBJEND']
         coverage = best_result['%COVERAGE']
         new_cal_score = best_result['cal_score']
+        new_gene = best_result["GENE"]
+        # print(new_gene)
         keys = list(tmp_results.keys())
 
         for hit in keys:
@@ -181,6 +187,8 @@ class Blaster():
                 old_sbjct_start = hit_data['SBJSTART']
                 old_sbjct_end = hit_data['SBJEND']
                 old_cal_score = hit_data['cal_score']
+                old_gene = hit_data['GENE']
+                # print(old_gene)
                 hit_union_length = (max(old_query_end, new_query_end)
                                     - min(old_query_start, new_query_start))
                 hit_lengths_sum = ((old_query_end - old_query_start)
@@ -189,19 +197,50 @@ class Blaster():
 
                 if overlap_len <= 0:  # two genes without overlap, save all of them
                     continue
-
-                if (old_query_start == new_query_start) and (old_query_end == new_query_end):
-                    if new_cal_score > old_cal_score:
-                        remove_old = 1
+                # solve bug
+                # else:  # tow genes with overlap
+                #     if (old_query_start == new_query_start) and (old_query_end == new_query_end):
+                #         if new_gene == old_gene:
+                #             if new_cal_score > old_cal_score:
+                #                 remove_old = 1
+                #             elif new_cal_score == old_cal_score:
+                #                 save = 1
+                #             else:
+                #                 save = 0
+                #         else:
+                #             save = 1
+                #     elif (old_query_start != new_query_start) or (old_query_end != new_query_end):
+                #         if new_gene == old_gene:
+                #             if new_cal_score > old_cal_score:
+                #                 remove_old = 1
+                #             elif new_cal_score == old_cal_score:
+                #                 save = 1
+                #             else:
+                #                 save = 0
+                #         else:
+                #             save = 1
+                #     else:
+                #         pass
+                else:  # two genes with overlap
+                    if (old_query_start == new_query_start) and (old_query_end == new_query_end):
+                        if new_cal_score > old_cal_score:
+                            remove_old = 1
+                        elif new_cal_score == old_cal_score:
+                            if new_gene == old_gene:
+                                save = 0
+                            else:
+                                save = 1
+                        else:
+                            save = 0
+                    elif (old_query_start != new_query_start) or (old_query_end != new_query_end):
+                        if new_cal_score > old_cal_score:
+                            remove_old = 1
+                        elif new_cal_score == old_cal_score:
+                            save = 1
+                        else:
+                            save = 0
                     else:
-                        save = 0
-                elif (old_query_start != new_query_start) or (old_query_end != new_query_end):
-                    if new_cal_score > old_cal_score:
-                        remove_old = 1
-                    else:
-                        save = 0
-                else:
-                    pass
+                        pass
             if remove_old == 1:
                 del tmp_results[hit]
         return save, tmp_results
@@ -221,6 +260,7 @@ class Blaster():
                     "%COVERAGE": '',
                     "%IDENTITY": '',
                     'ACCESSION': '',
+                    'CLASSES': '',
                     'QUERY_SEQ': '',
                     'cal_score': '',
                     'remove': ''}
@@ -240,7 +280,7 @@ class Blaster():
     def makeblastdb(file, name):
         cline = NcbimakeblastdbCommandline(
             dbtype="nucl", out=name, input_file=file)
-        print("Making reference database...")
+        print(f"Making {name} database...")
         stdout, stderr = cline()
         print('Finish')
 

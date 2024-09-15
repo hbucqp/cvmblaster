@@ -1,35 +1,68 @@
 import os
 import sys
 import pandas as pd
+import subprocess
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Blast import NCBIXML
 
 # from Bio.Blast import NCBIWWW
-from Bio.Blast.Applications import NcbiblastnCommandline
-from Bio.Blast.Applications import NcbimakeblastdbCommandline
+# from Bio.Blast.Applications import NcbiblastnCommandline
+# from Bio.Blast.Applications import NcbimakeblastdbCommandline
 
 
 class Blaster():
-    def __init__(self, inputfile, database, output, threads, minid=90, mincov=60):
+    def __init__(self, inputfile, database, output, threads, minid=90, mincov=60, blast_type='blastn'):
         self.inputfile = os.path.abspath(inputfile)
         self.database = database
         self.minid = int(minid)
         self.mincov = int(mincov)
         self.temp_output = os.path.join(os.path.abspath(output), 'temp.xml')
         self.threads = threads
+        self.blast_type = blast_type
 
     def biopython_blast(self):
         hsp_results = {}
-        cline = NcbiblastnCommandline(query=self.inputfile, db=self.database, dust='no',
-                                      evalue=1E-20, out=self.temp_output, outfmt=5,
-                                      perc_identity=self.minid, max_target_seqs=50000,
-                                      num_threads=self.threads)
+        # biopython no longer support the NcbiblastnCommandline
+        # replace NcbiblastnCommandline using subprocess with blastn
+
+        # cline = NcbiblastnCommandline(query=self.inputfile, db=self.database, dust='no',
+        #                               evalue=1E-20, out=self.temp_output, outfmt=5,
+        #                               perc_identity=self.minid, max_target_seqs=50000,
+        #                               num_threads=self.threads)
         # print(cline)
         # print(self.temp_output)
+        if self.blast_type == 'blastn':
+            cline = [self.blast_type, '-query', self.inputfile, '-db', self.database,
+                     '-dust', 'no', '-evalue', '1E-20', '-out', self.temp_output,
+                     '-outfmt', '5', '-perc_identity', str(
+                         self.minid), '-max_target_seqs', '50000',
+                     '-num_threads', str(self.threads)]
+        elif self.blast_type == 'blastx':
+            cline = [self.blast_type, '-query', self.inputfile, '-db', self.database,
+                     '-evalue', '1E-20', '-out', self.temp_output,
+                     '-outfmt', '5', '-max_target_seqs', '50000',
+                     '-num_threads', str(self.threads)]
+        else:
+            print('Wrong blast type, exit ...')
+            sys.exit(1)
 
-        stdout, stderr = cline()
+        # stdout, stderr = cline()
+        # print(cline)
+
+        # Run the command using subprocess
+        result = subprocess.run(
+            cline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Capture the output and error
+        stdout = result.stdout
+        stderr = result.stderr
+
+        # Print or handle the output and error as needed
+        # print(stdout)
+        if stderr:
+            print(f"Error: {stderr}")
 
         result_handler = open(self.temp_output)
 
@@ -88,6 +121,7 @@ class Blaster():
                     perc_coverage = (((int(query_length) - int(gaps))
                                       / float(sbjct_length)) * 100)
                     COVERAGE = "%.2f" % perc_coverage
+
                     # print("Coverage: %s " % perc_coverage)
 
                     # cal_score is later used to select the best hit
@@ -109,7 +143,173 @@ class Blaster():
                     else:
                         strand_direction = '-'
 
-                    if perc_coverage >= self.mincov:
+                    if perc_coverage >= self.mincov and perc_ident >= self.minid:
+                        loop_check += 1
+                        hit_id = "%s:%s_%s:%s" % (
+                            query_name, query_start, query_end, target_gene)
+                        # print(hit_id)
+                        # hit_id = query_name
+                        # print(hit_id)
+                        best_result = {
+                            'FILE': os.path.basename(self.inputfile),
+                            'SEQUENCE': query_name,
+                            'GENE': gene,
+                            'START': query_start,
+                            'END': query_end,
+                            'SBJSTART': sbjct_start,
+                            'SBJEND': sbjct_end,
+                            'STRAND': strand_direction,
+                            # 'COVERAGE':
+                            'GAPS': gaps,
+                            "%COVERAGE": COVERAGE,
+                            "%IDENTITY": IDENTITY,
+                            # 'DATABASE':
+                            'ACCESSION': accession,
+                            'CLASSES': classes,
+                            'QUERY_SEQ': query_string,
+                            'SBJCT_SEQ': sbjct_string,
+                            'cal_score': cal_score,
+                            'remove': 0
+                            # 'PRODUCT': target_gene,
+                            # 'RESISTANCE': target_gene
+                        }
+                        # print(best_result)
+
+                        # solve local variable referenced before assignment
+                        if best_result:
+                            save = 1
+
+                            if hsp_results:
+                                tmp_results = hsp_results
+                                save, hsp_results = Blaster.filter_results(
+                                    save, best_result, tmp_results)
+
+                    if save == 1:
+                        hsp_results[hit_id] = best_result
+        # close file handler, then remove temp file
+        result_handler.close()
+        os.remove(self.temp_output)
+        # print(self.inputfile)
+        if loop_check == 0:
+            df = pd.DataFrame(columns=['FILE', 'SEQUENCE', 'GENE', 'START', 'END', 'SBJSTART',
+                                       'SBJEND', 'STRAND', 'GAPS', '%COVERAGE', '%IDENTITY', 'ACCESSION', 'CLASSES'])
+        else:
+            df = Blaster.resultdict2df(hsp_results)
+        # print(hsp_results)
+        return df, hsp_results
+
+    def biopython_blastx(self):
+        hsp_results = {}
+        # biopython no longer support the NcbiblastnCommandline
+        # replace NcbiblastnCommandline using subprocess with blastn
+
+        # cline = NcbiblastnCommandline(query=self.inputfile, db=self.database, dust='no',
+        #                               evalue=1E-20, out=self.temp_output, outfmt=5,
+        #                               perc_identity=self.minid, max_target_seqs=50000,
+        #                               num_threads=self.threads)
+        # print(cline)
+        # print(self.temp_output)
+
+        cline = [self.blast_type, '-query', self.inputfile, '-db', self.database,
+                 '-evalue', '1E-20', '-out', self.temp_output,
+                 '-outfmt', '5', '-max_target_seqs', '50000',
+                 '-num_threads', str(self.threads)]
+
+        # stdout, stderr = cline()
+
+        # Run the command using subprocess
+        result = subprocess.run(
+            cline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Capture the output and error
+        stdout = result.stdout
+        stderr = result.stderr
+
+        # Print or handle the output and error as needed
+        # print(stdout)
+        if stderr:
+            print(f"Error: {stderr}")
+
+        result_handler = open(self.temp_output)
+
+        blast_records = NCBIXML.parse(result_handler)
+        df_final = pd.DataFrame()
+
+        # solve local variable referenced before assignment
+        loop_check = 0
+        save = 0
+
+        for blast_record in blast_records:
+
+            # if blast_record.alignments:
+            #     print("QUERY: %s" % blast_record.query)
+            # else:
+            #     for alignment in blast_record.alignments:
+            for alignment in blast_record.alignments:
+                for hsp in alignment.hsps:
+                    strand = 0
+
+                    query_name = blast_record.query
+                    # print(query_name)
+                    # print(alignment.title)
+                    target_gene = alignment.title.partition(' ')[2]
+
+                    # Get gene name and accession number from target_gene
+                    gene = target_gene.split('___')[0]
+                    accession = target_gene.split('___')[2]
+                    classes = target_gene.split('___')[3]  # 增加种类
+                    # print(classes)
+                    # print(target_gene)
+                    sbjct_length = alignment.length  # The length of matched gene
+                    # print(sbjct_length)
+                    sbjct_start = hsp.sbjct_start
+                    sbjct_end = hsp.sbjct_end
+                    gaps = hsp.gaps  # gaps of alignment
+                    query_string = str(hsp.query)  # Get the query string
+                    sbjct_string = str(hsp.sbjct)
+                    identities_length = hsp.identities  # Number of indentity bases
+                    # contig_name = query.replace(">", "")
+                    query_start = hsp.query_start
+                    query_end = hsp.query_end
+                    # length of query sequence
+                    query_length = len(query_string)
+
+                    # calculate identities
+                    perc_ident = (int(identities_length)
+                                  / float(query_length) * 100)
+                    IDENTITY = "%.2f" % perc_ident
+                    # print("Identities: %s " % perc_ident)
+
+                    # coverage = ((int(query_length) - int(gaps))
+                    #             / float(sbjct_length))
+                    # print(coverage)
+
+                    perc_coverage = (((int(query_length) - int(gaps))
+                                      / float(sbjct_length)) * 100)
+                    COVERAGE = "%.2f" % perc_coverage
+
+                    # print("Coverage: %s " % perc_coverage)
+
+                    # cal_score is later used to select the best hit
+                    cal_score = perc_ident * perc_coverage
+
+                    # Calculate if the hit is on minus strand
+                    if sbjct_start > sbjct_end:
+                        temp = sbjct_start
+                        sbjct_start = sbjct_end
+                        sbjct_end = temp
+                        strand = 1
+                        query_string = str(
+                            Seq(str(query_string)).reverse_complement())
+                        sbjct_string = str(
+                            Seq(str(sbjct_string)).reverse_complement())
+
+                    if strand == 0:
+                        strand_direction = '+'
+                    else:
+                        strand_direction = '-'
+
+                    if (perc_coverage >= self.mincov) and (perc_ident >= self.minid):
                         loop_check += 1
                         hit_id = "%s:%s_%s:%s" % (
                             query_name, query_start, query_end, target_gene)
@@ -283,11 +483,25 @@ class Blaster():
         return df_result
 
     @staticmethod
-    def makeblastdb(file, name):
-        cline = NcbimakeblastdbCommandline(
-            dbtype="nucl", out=name, input_file=file)
+    def makeblastdb(file, name, db_type='nucl'):
+
+        # cline = NcbimakeblastdbCommandline(
+            # dbtype="nucl", out=name, input_file=file)
+        # replace NcbimakeblastdbCommandline with makeblastdb command
+        command = ['makeblastdb', '-hash_index', '-dbtype',
+                   str(db_type), '-out', name, '-in', file]
+        # print(command)
         print(f"Making {name} database...")
-        stdout, stderr = cline()
+        result = subprocess.run(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # stdout, stderr = cline()
+        # Capture the output and error
+        stdout = result.stdout
+        stderr = result.stderr
+        # Print or handle the output and error as needed
+        print(stdout)
+        if stderr:
+            print(f"Error: {stderr}")
         print('Finish')
 
     @staticmethod
