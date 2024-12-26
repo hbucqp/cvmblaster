@@ -2,10 +2,15 @@ import os
 import sys
 import pandas as pd
 import subprocess
-from Bio import SeqIO
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-from Bio.Blast import NCBIXML
+import warnings
+
+# supress deprecation warnings
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore', category=DeprecationWarning)
+    from Bio.Blast import NCBIXML
+    from Bio import SeqIO
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
 
 # from Bio.Blast import NCBIWWW
 # from Bio.Blast.Applications import NcbiblastnCommandline
@@ -560,4 +565,5 @@ class Blaster():
                 # False when `fasta` is empty, i.e. wasn't a FASTA file
                 return any(fasta)
         except:
+            print(f'The input file {file} is not a valid fasta file.')
             return False
