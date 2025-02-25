@@ -435,17 +435,6 @@ class Blaster():
         os.remove(self.temp_output)
         return result
 
-    @staticmethod
-    def makeblastdb(file):
-        cline = NcbimakeblastdbCommandline(
-            dbtype="nucl", title='cgMLST',
-            hash_index=True,
-            parse_seqids=True,
-            input_file=file)
-        print(f"Making database...")
-        stdout, stderr = cline()
-        print(stdout)
-
     @ staticmethod
     def filter_results(save, best_result, tmp_results):
         """
