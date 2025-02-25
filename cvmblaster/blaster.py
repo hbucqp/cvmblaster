@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import pandas as pd
 import subprocess
@@ -370,19 +371,27 @@ class Blaster():
         return df, hsp_results
 
     def mlst_blast(self):
-        cline = [self.blast_type, '-query', self.inputfile, '-db', self.database, '-dust', 'no', '-ungapped'
+        cline = [self.blast_type, '-query', self.inputfile, '-db', self.database, '-dust', 'no', '-ungapped',
                  '-evalue', '1E-20', '-out', self.temp_output,
-                 '-outfmt', '"6 sseqid slen length nident"', '-perc_identity', self.minid, '-max_target_seqs', '1000000',
+                 '-outfmt', '6 sseqid slen length nident', '-perc_identity', str(
+                     self.minid), '-max_target_seqs', '1000000',
                  '-num_threads', str(self.threads)]
 
-        # cline = NcbiblastnCommandline(query=self.inputfile, db=self.database, dust='no', ungapped=True,
-        #                               evalue=1E-20, out=self.temp_output,  # delete culling_limit parameters
-        #                               outfmt='"6 sseqid slen length nident"',
-        #                               # task='dc-megablast',
-        #                               perc_identity=self.minid, max_target_seqs=1000000,
-        #                               num_threads=self.threads)
         # print(cline)
-        stdout, stderr = cline()
+
+        # Run the command using subprocess
+        cline_result = subprocess.run(
+            cline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Capture the output and error
+        stdout = cline_result.stdout
+        stderr = cline_result.stderr
+
+        # Print or handle the output and error as needed
+        # print(stdout)
+        if stderr:
+            print(f"Error: {stderr}")
+
         df = pd.read_csv(self.temp_output, sep='\t', names=[
             'sseqid', 'slen', 'length', 'nident'])
         # print(df)
