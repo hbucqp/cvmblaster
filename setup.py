@@ -18,7 +18,9 @@ except ImportError:
 
 
 requirements = [
-    'Bio', 'pandas', 'setuptools'
+    'Bio',
+    'pandas',
+    'setuptools'
 ]
 
 about = {}
