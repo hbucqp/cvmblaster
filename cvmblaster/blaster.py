@@ -4,6 +4,8 @@ import sys
 import pandas as pd
 import subprocess
 import warnings
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, Tuple
 
 # supress deprecation warnings
 with warnings.catch_warnings():
@@ -204,177 +206,97 @@ class Blaster():
         # print(hsp_results)
         return df, hsp_results
 
-    def biopython_blastx(self):
-        hsp_results = {}
-        # biopython no longer support the NcbiblastnCommandline
-        # replace NcbiblastnCommandline using subprocess with blastn
+    @staticmethod
+    def process_row(row: pd.Series, mincov: float) -> Tuple[str, int]:
+        """Process a single row of the blast results DataFrame.
 
-        # cline = NcbiblastnCommandline(query=self.inputfile, db=self.database, dust='no',
-        #                               evalue=1E-20, out=self.temp_output, outfmt=5,
-        #                               perc_identity=self.minid, max_target_seqs=50000,
-        #                               num_threads=self.threads)
-        # print(cline)
-        # print(self.temp_output)
+        Args:
+            row: DataFrame row containing blast results
+            mincov: Minimum coverage threshold
 
-        cline = [self.blast_type, '-query', self.inputfile, '-db', self.database,
-                 '-evalue', '1E-20', '-out', self.temp_output,
-                 '-outfmt', '5', '-max_target_seqs', '50000',
-                 '-num_threads', str(self.threads)]
+        Returns:
+            Tuple of (gene, result) or None if no match
+        """
+        try:
+            gene, num = re.match('^(\w+)[_-](\d+)', row['sseqid']).group(1, 2)
+            num = int(num)
+            hlen = row['slen']
+            alen = row['length']
+            nident = row['nident']
 
-        # stdout, stderr = cline()
+            if nident * 100 / hlen < mincov:
+                return None
 
-        # Run the command using subprocess
-        result = subprocess.run(
-            cline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if hlen == alen and nident == hlen:  # exact match
+                return (gene, num)
+            elif alen == hlen and nident != hlen:  # new allele
+                return (gene, f'~{num}')
+            elif alen != hlen and nident == hlen:  # partial match
+                return (gene, f'{num}?')
+            return None
+        except (AttributeError, ValueError):
+            return None
 
-        # Capture the output and error
-        stdout = result.stdout
-        stderr = result.stderr
+    @staticmethod
+    def merge_results(current_result: Dict, new_gene: str, new_value: any) -> bool:
+        """Merge new results with existing results.
 
-        # Print or handle the output and error as needed
-        # print(stdout)
-        if stderr:
-            print(f"Error: {stderr}")
+        Returns:
+            bool: True if the result was merged, False if it was skipped
+        """
+        if new_gene not in current_result:
+            return True
 
-        result_handler = open(self.temp_output)
+        if isinstance(new_value, int):  # exact match
+            if not re.search(r'[~\?]', str(current_result[new_gene])):
+                old_num = int(current_result[new_gene])
+                if new_value < old_num:
+                    print(
+                        f'Found additional allele match, replace {new_gene}:{old_num} -> {new_value}')
+                    return True
+                else:
+                    print(
+                        f'Found additional allele match, but the allele number {new_value} is greater or equal to stored one {new_gene}:{old_num}, skip...')
+            else:  # replace not perfect match
+                return True
+        return False
 
-        blast_records = NCBIXML.parse(result_handler)
-        df_final = pd.DataFrame()
+    def process_blast_results(self, df: pd.DataFrame) -> Dict:
+        """Process blast results using multiple threads.
 
-        # solve local variable referenced before assignment
-        loop_check = 0
-        save = 0
+        Args:
+            df: DataFrame containing blast results
 
-        for blast_record in blast_records:
+        Returns:
+            Dictionary containing processed results
+        """
+        result = {}
 
-            # if blast_record.alignments:
-            #     print("QUERY: %s" % blast_record.query)
-            # else:
-            #     for alignment in blast_record.alignments:
-            for alignment in blast_record.alignments:
-                for hsp in alignment.hsps:
-                    strand = 0
+        # Create a thread pool
+        with ThreadPoolExecutor(max_workers=self.threads) as executor:
+            # Process rows in parallel
+            future_to_row = {
+                executor.submit(Blaster.process_row, row, self.mincov): row
+                for _, row in df.iterrows()
+            }
 
-                    query_name = blast_record.query
-                    # print(query_name)
-                    # print(alignment.title)
-                    target_gene = alignment.title.partition(' ')[2]
+            # Collect results
+            for future in as_completed(future_to_row):
+                processed_result = future.result()
+                if processed_result is None:
+                    continue
 
-                    # Get gene name and accession number from target_gene
-                    gene = target_gene.split('___')[0]
-                    accession = target_gene.split('___')[2]
-                    classes = target_gene.split('___')[3]  # 增加种类
-                    # print(classes)
-                    # print(target_gene)
-                    sbjct_length = alignment.length  # The length of matched gene
-                    # print(sbjct_length)
-                    sbjct_start = hsp.sbjct_start
-                    sbjct_end = hsp.sbjct_end
-                    gaps = hsp.gaps  # gaps of alignment
-                    query_string = str(hsp.query)  # Get the query string
-                    sbjct_string = str(hsp.sbjct)
-                    identities_length = hsp.identities  # Number of indentity bases
-                    # contig_name = query.replace(">", "")
-                    query_start = hsp.query_start
-                    query_end = hsp.query_end
-                    # length of query sequence
-                    query_length = len(query_string)
+                gene, value = processed_result
+                if Blaster.merge_results(result, gene, value):
+                    result[gene] = value
 
-                    # calculate identities
-                    perc_ident = (int(identities_length)
-                                  / float(query_length) * 100)
-                    IDENTITY = "%.2f" % perc_ident
-                    # print("Identities: %s " % perc_ident)
-
-                    # coverage = ((int(query_length) - int(gaps))
-                    #             / float(sbjct_length))
-                    # print(coverage)
-
-                    perc_coverage = (((int(query_length) - int(gaps))
-                                      / float(sbjct_length)) * 100)
-                    COVERAGE = "%.2f" % perc_coverage
-
-                    # print("Coverage: %s " % perc_coverage)
-
-                    # cal_score is later used to select the best hit
-                    cal_score = perc_ident * perc_coverage
-
-                    # Calculate if the hit is on minus strand
-                    if sbjct_start > sbjct_end:
-                        temp = sbjct_start
-                        sbjct_start = sbjct_end
-                        sbjct_end = temp
-                        strand = 1
-                        query_string = str(
-                            Seq(str(query_string)).reverse_complement())
-                        sbjct_string = str(
-                            Seq(str(sbjct_string)).reverse_complement())
-
-                    if strand == 0:
-                        strand_direction = '+'
-                    else:
-                        strand_direction = '-'
-
-                    if (perc_coverage >= self.mincov) and (perc_ident >= self.minid):
-                        loop_check += 1
-                        hit_id = "%s:%s_%s:%s" % (
-                            query_name, query_start, query_end, target_gene)
-                        # print(hit_id)
-                        # hit_id = query_name
-                        # print(hit_id)
-                        best_result = {
-                            'FILE': os.path.basename(self.inputfile),
-                            'SEQUENCE': query_name,
-                            'GENE': gene,
-                            'START': query_start,
-                            'END': query_end,
-                            'SBJSTART': sbjct_start,
-                            'SBJEND': sbjct_end,
-                            'STRAND': strand_direction,
-                            # 'COVERAGE':
-                            'GAPS': gaps,
-                            "%COVERAGE": COVERAGE,
-                            "%IDENTITY": IDENTITY,
-                            # 'DATABASE':
-                            'ACCESSION': accession,
-                            'CLASSES': classes,
-                            'QUERY_SEQ': query_string,
-                            'SBJCT_SEQ': sbjct_string,
-                            'cal_score': cal_score,
-                            'remove': 0
-                            # 'PRODUCT': target_gene,
-                            # 'RESISTANCE': target_gene
-                        }
-                        # print(best_result)
-
-                        # solve local variable referenced before assignment
-                        if best_result:
-                            save = 1
-
-                            if hsp_results:
-                                tmp_results = hsp_results
-                                save, hsp_results = Blaster.filter_results(
-                                    save, best_result, tmp_results)
-
-                    if save == 1:
-                        hsp_results[hit_id] = best_result
-        # close file handler, then remove temp file
-        result_handler.close()
-        os.remove(self.temp_output)
-        # print(self.inputfile)
-        if loop_check == 0:
-            df = pd.DataFrame(columns=['FILE', 'SEQUENCE', 'GENE', 'START', 'END', 'SBJSTART',
-                                       'SBJEND', 'STRAND', 'GAPS', '%COVERAGE', '%IDENTITY', 'ACCESSION', 'CLASSES'])
-        else:
-            df = Blaster.resultdict2df(hsp_results)
-        # print(hsp_results)
-        return df, hsp_results
+        return result
 
     def mlst_blast(self):
         cline = [self.blast_type, '-query', self.inputfile, '-db', self.database, '-dust', 'no', '-ungapped',
-                 '-evalue', '1E-20', '-out', self.temp_output,
-                 '-outfmt', '6 sseqid slen length nident', '-perc_identity', str(
-                     self.minid), '-max_target_seqs', '1000000',
+                 '-word_size', '32', '-evalue', '1E-20', '-out', self.temp_output,
+                 '-outfmt', '6 sseqid slen length nident', '-perc_identity', str(self.minid), 
+                 '-max_target_seqs', '1000000',
                  '-num_threads', str(self.threads)]
 
         # print(cline)
@@ -396,51 +318,9 @@ class Blaster():
             'sseqid', 'slen', 'length', 'nident'])
         # print(df)
 
-        result = {}
-        for i, row in df.iterrows():
-            gene, num = re.match(
-                '^(\w+)[_-](\d+)', row['sseqid']).group(1, 2)
-            # print(gene)
-            num = int(num)
-            hlen = row['slen']
-            alen = row['length']
-            nident = row['nident']
-            if nident * 100 / hlen >= self.mincov:
-                # if sch not in result.keys():  # check if sch is the key of result
-                #     result[sch] = {}
-                # resolve the bug that could not get exactly matched allele
-                if hlen == alen & nident == hlen:  # exact match
-                    if gene in result.keys():
+        result = Blaster.process_blast_results(self, df)
 
-                        if not re.search(r'[~\?]', str(result[gene])):
-                            old_num = int(result[gene])
-                            if num < old_num:
-                                # print(f'{num}\t{old_num}')
-                                result[gene] = num
-                                print(
-                                    f'Found additional allele match, replace {gene}:{old_num} -> {num}')
-                            else:
-                                print(
-                                    f'Found additional allele match, but the allele number {num} is greater or equal to stored one {gene}:{old_num}, skip...')
-                        else:  # replace not perfect match
-                            result[gene] = num
-                    else:
-                        result[gene] = num
-                # new allele
-                elif (alen == hlen) & (nident != hlen):
-                    # print('xx')
-                    if gene not in result.keys():
-                        # print('xxx')
-                        result[gene] = f'~{num}'
-                    else:
-                        next
-                    # result[sch] = mlst
-                elif (alen != hlen) & (nident == hlen):  # partial match
-                    if gene not in result.keys():
-                        result[gene] = f'{num}?'
-                else:
-                    next
-        # remove temp blastn output file
+        # Remove temp blastn output file
         os.remove(self.temp_output)
         return result
 
