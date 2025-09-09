@@ -18,18 +18,18 @@ with warnings.catch_warnings():
     from Bio.SeqRecord import SeqRecord
 
 
-
 # Configure logging system for the entire application
 # This sets up a centralized logging system that will be used throughout the pipeline
 logging.basicConfig(
-    level=logging.INFO,  # Set minimum log level to INFO (INFO, WARNING, ERROR, CRITICAL will be shown)
-    format='%(asctime)s - %(levelname)s - %(message)s',  # Format: timestamp - level - message
+    # Set minimum log level to INFO (INFO, WARNING, ERROR, CRITICAL will be shown)
+    level=logging.INFO,
+    # Format: timestamp - level - message
+    format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'  # Date format: YYYY-MM-DD HH:MM:SS
 )
 # Create a logger instance for this module
 # This allows us to use logger.info(), logger.error(), etc. throughout the code
 logger = logging.getLogger(__name__)
-
 
 
 class Blaster():
@@ -312,7 +312,8 @@ class Blaster():
     def mlst_blast(self):
         cline = [self.blast_type, '-query', self.inputfile, '-db', self.database, '-dust', 'no', '-ungapped',
                  '-word_size', '32', '-evalue', '1E-20', '-out', self.temp_output,
-                 '-outfmt', '6 sseqid slen length nident', '-perc_identity', str(self.minid), 
+                 '-outfmt', '6 sseqid slen length nident', '-perc_identity', str(
+                     self.minid),
                  '-max_target_seqs', '1000000',
                  '-num_threads', str(self.threads)]
 
@@ -480,10 +481,12 @@ class Blaster():
         stdout = result.stdout
         stderr = result.stderr
         # Print or handle the output and error as needed
-        print(stdout)
-        if stderr:
-            print(f"Error: {stderr}")
-        print('Finish')
+        # print(stdout)
+        if result.returncode != 0:
+            error_msg = f"Command failed: {' '.join(command)}\nStderr: {stderr}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        logger.info(f'Finish creating {name} database')
 
     @staticmethod
     def get_arg_seq(file_base, result_dict, out_path):
