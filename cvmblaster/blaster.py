@@ -6,6 +6,8 @@ import subprocess
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Tuple
+import logging
+
 
 # supress deprecation warnings
 with warnings.catch_warnings():
@@ -15,9 +17,19 @@ with warnings.catch_warnings():
     from Bio.Seq import Seq
     from Bio.SeqRecord import SeqRecord
 
-# from Bio.Blast import NCBIWWW
-# from Bio.Blast.Applications import NcbiblastnCommandline
-# from Bio.Blast.Applications import NcbimakeblastdbCommandline
+
+
+# Configure logging system for the entire application
+# This sets up a centralized logging system that will be used throughout the pipeline
+logging.basicConfig(
+    level=logging.INFO,  # Set minimum log level to INFO (INFO, WARNING, ERROR, CRITICAL will be shown)
+    format='%(asctime)s - %(levelname)s - %(message)s',  # Format: timestamp - level - message
+    datefmt='%Y-%m-%d %H:%M:%S'  # Date format: YYYY-MM-DD HH:MM:SS
+)
+# Create a logger instance for this module
+# This allows us to use logger.info(), logger.error(), etc. throughout the code
+logger = logging.getLogger(__name__)
+
 
 
 class Blaster():
@@ -69,8 +81,13 @@ class Blaster():
 
         # Print or handle the output and error as needed
         # print(stdout)
-        if stderr:
-            print(f"Error: {stderr}")
+        # if stderr:
+        #     print(f"Error: {stderr}")
+
+        if result.returncode != 0:
+            error_msg = f"Command failed: {' '.join(cline)}\nStderr: {stderr}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
         result_handler = open(self.temp_output)
 
@@ -311,8 +328,12 @@ class Blaster():
 
         # Print or handle the output and error as needed
         # print(stdout)
-        if stderr:
-            print(f"Error: {stderr}")
+        # if stderr:
+        #     print(f"Error: {stderr}")
+        if cline_result.returncode != 0:
+            error_msg = f"Command failed: {' '.join(cline)}\nStderr: {stderr}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
         df = pd.read_csv(self.temp_output, sep='\t', names=[
             'sseqid', 'slen', 'length', 'nident'])
@@ -451,7 +472,7 @@ class Blaster():
         command = ['makeblastdb', '-hash_index', '-dbtype',
                    str(db_type), '-out', name, '-in', file]
         # print(command)
-        print(f"Making {name} database...")
+        logger.info(f"Making {name} database...")
         result = subprocess.run(
             command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         # stdout, stderr = cline()
@@ -476,7 +497,7 @@ class Blaster():
         prot_path = os.path.join(out_path, prot_file)
         nucl_path = os.path.join(out_path, nucl_file)
         if len(result_dict.keys()) == 0:
-            print(f'No ARGs were found in {file_base}...')
+            logger.info(f'No ARGs were found in {file_base}...')
         else:
             for key in result_dict.keys():
                 hit_data = result_dict[key]
@@ -520,5 +541,5 @@ class Blaster():
                 # False when `fasta` is empty, i.e. wasn't a FASTA file
                 return any(fasta)
         except:
-            print(f'The input file {file} is not a valid fasta file.')
+            logger.error(f'The input file {file} is not a valid fasta file.')
             return False
